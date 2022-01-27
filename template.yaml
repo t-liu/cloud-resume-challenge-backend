@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Serverless API for Cloud Resume Challenge
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  VisitorLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Get visitor count and last viewed date from DynamoDB visitor table
+      CodeUri: lambda/
+      Handler: app.main
+      Runtime: python3.8
+      Architectures:
+        - x86_64
+      Events:
+        CallVisitorApi:
+          Type: Api
+          Properties:
+            Path: /visitor
+            Method: get
+      Environment:
+        Variables: 
+          tableName: !Ref VisitorNoSqlTable
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: !Ref VisitorNoSqlTable
+  
+  VisitorNoSqlTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: visitors
+      PrimaryKey:
+        Name: visitorId
+        Type: Number
+      SSESpecification:
+        SSEEnabled: false
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  VisitorApi:
+    Description: "API Gateway endpoint URL in production stage for Visitor API function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/visitor/"
+  VisitorFunction:
+    Description: "Visitor Lambda Function ARN"
+    Value: !GetAtt VisitorLambdaFunction.Arn
