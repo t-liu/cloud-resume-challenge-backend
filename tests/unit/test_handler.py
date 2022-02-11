@@ -1,13 +1,14 @@
+import os
 import json
 import boto3
 import pytest
 from moto import mock_dynamodb2
-from lambda import app
+import visitor.app
 
 
 @pytest.fixture()
 def apigw_event():
-    """ Generates API GW Event"""
+    """ Generates AWS API Gateway Event"""
 
     return {
         "body": '{ "test": "body"}',
@@ -16,7 +17,7 @@ def apigw_event():
             "resourceId": "123456",
             "apiId": "1234567890",
             "resourcePath": "/{proxy+}",
-            "httpMethod": "POST",
+            "httpMethod": "GET",
             "requestId": "c6af9ac6-7b61-11e6-9a41-93e8deadbeef",
             "accountId": "123456789012",
             "identity": {
@@ -32,9 +33,8 @@ def apigw_event():
                 "sourceIp": "127.0.0.1",
                 "accountId": "",
             },
-            "stage": "prod",
+            "stage": "Prod",
         },
-        "queryStringParameters": {"foo": "bar"},
         "headers": {
             "Via": "1.1 08f323deadbeefa7af34d5feb414ce27.cloudfront.net (CloudFront)",
             "Accept-Language": "en-US,en;q=0.8",
@@ -55,65 +55,38 @@ def apigw_event():
             "CloudFront-Forwarded-Proto": "https",
             "Accept-Encoding": "gzip, deflate, sdch",
         },
-        "pathParameters": {"proxy": "/examplepath"},
-        "httpMethod": "POST",
-        "stageVariables": {"baz": "qux"},
-        "path": "/examplepath",
+        "pathParameters": {"proxy": "/visitor"},
+        "httpMethod": "GET",
+        "path": "/visitor",
     }
 
 @mock_dynamodb2
-def test_main(apigw_event, mocker):
+def test_main(apigw_event):
 
     # Create mock dynamodb table
     table_name = 'visitors'
-    dynamodb = boto3.resource('dynamodb', 'us-east-2')
+    partition_key = 'visitorId'
+    
+    dynamodb = boto3.client('dynamodb')
+
     table = dynamodb.create_table(
+        AttributeDefinitions=[{'AttributeName': partition_key,'AttributeType': 'N'}],
         TableName=table_name,
-        KeySchema=[{'AttributeName': 'name', 'KeyType': 'HASH'}],
-        AttributeDefinitions=[{'AttributeName': 'name', 'AttributeType': 'S'}],
+        KeySchema=[{'AttributeName': partition_key, 'KeyType': 'HASH'}],
+        TableClass='STANDARD',
         ProvisionedThroughput={'ReadCapacityUnits': 1, 'WriteCapacityUnits': 1}
     )
+    
+    # update table
+    ret = visitor.app.update_visitor_count(table_name, partition_key, 'vc')
+    
+    response = dynamodb.get_item(
+            TableName=table_name,
+            Key={partition_key: {"N": "1"}}
+        )
 
-    # First Visitor
-    ret = app.add_count_handler(apigw_event, "")
-    data = json.loads(ret["body"])
-
-    assert ret["statusCode"] == 200
-    assert "message" in ret["body"]
-    assert data["message"] == "success"
-
-    table = dynamodb.Table(table_name)
-    response = table.get_item(
-        Key={
-            'name': 'visitors'
-        }
-    )
+    #print("test")
+    #print(response)
     item = response['Item']
-    assert item['visitors'] == 1
-
-    # Get Count
-    ret = app.get_count_handler(apigw_event, "")
-    data = json.loads(ret["body"])
-
-    assert ret["statusCode"] == 200
-    assert "message" in ret["body"]
-    assert data["message"] == "success"
-    assert "count" in ret["body"]
-    assert data["count"] == 1
-
-    # Second Visitor
-    ret = app.add_count_handler(apigw_event, "")
-    data = json.loads(ret["body"])
-
-    assert ret["statusCode"] == 200
-    assert "message" in ret["body"]
-    assert data["message"] == "success"
-
-    table = dynamodb.Table(table_name)
-    response = table.get_item(
-        Key={
-            'name': 'visitors'
-        }
-    )
-    item = response['Item']
-    assert item['visitors'] == 2
+    assert item['vc'] == 1
+  
