@@ -13,7 +13,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Description: Get visitor count and last viewed date from DynamoDB visitor table
-      CodeUri: lambda/
+      CodeUri: visitor/
       Handler: app.lambda_handler
       Runtime: python3.8
       Architectures:
