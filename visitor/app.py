@@ -22,12 +22,26 @@ def update_visitor_count(table, pk, column):
             ':incr': {"N": "1"}
         }
     )
-    if 'Item' in response:
+
+    print(response)
+
+    if 'Item' in response: 
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Access-Control-Allow-Origin": "*"
+            },
+            "body": json.dumps(response)
+        }
         # return response['Item'][column]
-        print(response)
     else:
-        # return {'statusCode': '404', 'body': 'Not Found'}
-        print ('No items')
+        return {
+            "statusCode": 404,
+            "headers": {
+                "Access-Control-Allow-Origin": "*"
+            },
+            "body": "Not Found"
+        }
 
 def update_last_viewed_date(table, pk, column):
 
@@ -40,23 +54,26 @@ def update_last_viewed_date(table, pk, column):
             ':ts': {"S": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
         }
     )
-    return(response)   
-
-def get_visitor_count(table, pk, column):
-    
-    response = ddbClient.get_item(
-            TableName=table,
-            Key={pk: {"N": "1"}}
-        )
-    if 'Item' in response:
-        return response['Item'][column]
+    print(response)
+    if 'Item' in response:        
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Access-Control-Allow-Origin": "*"
+            },
+            "body": json.dumps(response)
+        }
+        # return response['Item'][column]
     else:
         return {
-            'statusCode': '404',
-            'body': 'Not Found'
-        }
-        
-def get_last_viewed_date(table, pk, column):
+            "statusCode": 404,
+            "headers": {
+                "Access-Control-Allow-Origin": "*"
+            },
+            "body": "Not Found"
+        }  
+
+def get_visitor_data(table, pk, column):
     
     response = ddbClient.get_item(
             TableName=table,
@@ -73,13 +90,14 @@ def get_last_viewed_date(table, pk, column):
 def lambda_handler(event, context):
 
     ddbTableName = os.environ['tableName']
+    ddbPartitionKey = os.environ['partitionKey']
     
     # get last viewed date and store to response date var
-    responseLastViewedDate = get_last_viewed_date(ddbTableName, 'visitorId', 'lastViewedDate')
+    responseLastViewedDate = get_visitor_data(ddbTableName, ddbPartitionKey, 'lastViewedDate')
     
     # update visitor count & last viewed date
-    update_visitor_count(ddbTableName, 'visitorId', 'vc')
-    update_last_viewed_date(ddbTableName, 'visitorId', 'lastViewedDate')
+    update_visitor_count(ddbTableName, ddbPartitionKey, 'vc')
+    update_last_viewed_date(ddbTableName, ddbPartitionKey, 'lastViewedDate')
     
     # api gateway requires all four keys in the return when using lambda proxy integration
     # body must be stringify hence the json dumps
@@ -91,7 +109,7 @@ def lambda_handler(event, context):
         },
         "body": json.dumps({
             "lastViewed": responseLastViewedDate,
-            "count": get_visitor_count(ddbTableName, 'visitorId', 'vc')
+            "count": get_visitor_data(ddbTableName, ddbPartitionKey, 'vc')
         }),
         "isBase64Encoded": "false"
     } 

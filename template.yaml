@@ -27,6 +27,7 @@ Resources:
       Environment:
         Variables: 
           tableName: !Ref VisitorNoSqlTable
+          partitionKey: visitorId
       Policies:
       - DynamoDBCrudPolicy:
           TableName: !Ref VisitorNoSqlTable
@@ -40,6 +41,14 @@ Resources:
         Type: Number
       SSESpecification:
         SSEEnabled: false
+
+  #ApiMapping:
+  #  Type: 'AWS::ApiGatewayV2::ApiMapping'
+  #  Properties:
+  #    DomainName: api.thomasliu.click
+  #    ApiId: !Ref VisitorApi
+  #    Stage: !Ref MyStage
+
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
