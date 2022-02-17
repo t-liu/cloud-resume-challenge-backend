@@ -73,7 +73,7 @@ def test_update_visitor_count(apigw_event):
     partition_key = 'visitorId1'
     data_field = 'vc'
     
-    dynamodb = boto3.client('dynamodb')
+    dynamodb = boto3.client('dynamodb','us-east-1')
 
     table = dynamodb.create_table(
         AttributeDefinitions=[{'AttributeName': partition_key,'AttributeType': 'N'}],
@@ -105,7 +105,7 @@ def test_update_last_viewed_date(apigw_event):
     partition_key = 'visitorId2'
     data_field = 'lastViewedDate'
     
-    dynamodb = boto3.client('dynamodb')
+    dynamodb = boto3.client('dynamodb','us-east-1')
 
     table = dynamodb.create_table(
         AttributeDefinitions=[{'AttributeName': partition_key,'AttributeType': 'N'}],
@@ -137,7 +137,7 @@ def test_get_data(apigw_event):
     count_field = 'vc'
     date_field = 'lastViewedDate'
     
-    dynamodb = boto3.client('dynamodb')
+    dynamodb = boto3.client('dynamodb','us-east-1')
 
     table = dynamodb.create_table(
         AttributeDefinitions=[{'AttributeName': partition_key,'AttributeType': 'N'}],
@@ -177,7 +177,7 @@ def test_main_handler(apigw_event, test_get_env_vars_with_monkeypatch):
     table_name = os.environ['tableName']
     partition_key = os.environ['partitionKey']
     
-    dynamodb = boto3.client('dynamodb')
+    dynamodb = boto3.client('dynamodb','us-east-1')
 
     table = dynamodb.create_table(
         AttributeDefinitions=[{'AttributeName': partition_key,'AttributeType': 'N'}],
