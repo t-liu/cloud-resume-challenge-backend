@@ -3,6 +3,7 @@ import json
 import string
 import boto3
 from datetime import datetime
+import botocore
 
 """
 note: there is only one record in this dynamodb table 
@@ -22,9 +23,7 @@ def update_visitor_count(table, pk, column):
             ':incr': {"N": "1"}
         }
     )
-
     print(response)
-
     if 'Item' in response: 
         return {
             "statusCode": 200,
@@ -75,10 +74,16 @@ def update_last_viewed_date(table, pk, column):
 
 def get_visitor_data(table, pk, column):
     
-    response = ddbClient.get_item(
+    try:
+        response = ddbClient.get_item(
             TableName=table,
             Key={pk: {"N": "1"}}
         )
+    except botocore.exceptions.ClientError as e:
+        print(e.response['Error']['Message'])
+    else:
+        print(response)
+
     if 'Item' in response:
         return response['Item'][column]
     else:

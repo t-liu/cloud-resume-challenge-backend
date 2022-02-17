@@ -187,7 +187,7 @@ def test_main_handler(apigw_event, test_get_env_vars_with_monkeypatch):
         ProvisionedThroughput={'ReadCapacityUnits': 1, 'WriteCapacityUnits': 1}
     )
     
-    # call main lambda handler
+    # update dynamodb with date first then call main lambda handler
     visitor.app.update_last_viewed_date(table_name, partition_key, 'lastViewedDate')
     response = visitor.app.lambda_handler(apigw_event, "")
    
