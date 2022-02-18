@@ -36,6 +36,9 @@ jobs:
       - name: run unit tests
         run: pytest tests/unit/*
       
+      - name: run integration tests
+        run: pytest tests/integration/*
+
       - name: setup aws sam cli
         uses: aws-actions/setup-sam@v1
       
