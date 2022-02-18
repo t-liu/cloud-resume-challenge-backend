@@ -11,7 +11,7 @@ class TestApiGateway(TestCase):
     def setUp(self) -> None:
 
         stack_name = "VisitorApi"
-        client = boto3.client("cloudformation")
+        client = boto3.client("cloudformation", "us-east-1")
 
         try:
             response = client.describe_stacks(StackName=stack_name)
