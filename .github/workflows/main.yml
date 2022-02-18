@@ -35,9 +35,6 @@ jobs:
 
       - name: run unit tests
         run: pytest tests/unit/*
-      
-      - name: run integration tests
-        run: pytest tests/integration/*
 
       - name: setup aws sam cli
         uses: aws-actions/setup-sam@v1
@@ -56,3 +53,6 @@ jobs:
       # sam deploy
       - name: deploy sam application to aws
         run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name VisitorApi --s3-bucket aws-sam-cli-managed-default-samclisourcebucket-1ifcap9cu3w66 --capabilities CAPABILITY_IAM --region us-east-1
+
+      - name: run integration tests
+        run: pytest -v tests/integration/*
