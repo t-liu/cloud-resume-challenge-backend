@@ -12,6 +12,7 @@ Resources:
   VisitorApiGateway:
     Type: AWS::Serverless::Api
     Properties:
+      StageName: Prod
       Description: This API supports the update and retrieval of a visitors object in AWS DynamoDB for the Cloud Resume Challenge.
 
   VisitorLambdaFunction:
