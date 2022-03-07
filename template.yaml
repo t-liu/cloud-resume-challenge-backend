@@ -12,7 +12,9 @@ Resources:
   VisitorApiGateway:
     Type: AWS::Serverless::Api
     Properties:
+      Name: VisitorApi
       StageName: Prod
+      Cors: "'*'"
       Description: This API supports the update and retrieval of a visitors object in AWS DynamoDB for the Cloud Resume Challenge.
 
   VisitorLambdaFunction:
@@ -64,7 +66,8 @@ Outputs:
   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
   VisitorApi:
     Description: "API Gateway endpoint URL in production stage for Visitor API function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ServerlessRestApiProdStage}/visitor/"
+    #Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ServerlessRestApiProdStage}/visitor/"
+    Value: !Sub "https://${AWS::ApiGateway::RestApi}.execute-api.${AWS::Region}.amazonaws.com/${AWS::ApiGateway::Stage}/visitor/"
   VisitorFunction:
     Description: "Visitor Lambda Function ARN"
     Value: !GetAtt VisitorLambdaFunction.Arn
