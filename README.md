@@ -14,7 +14,6 @@ The AWS Toolkit is an open source plug-in for popular IDEs that uses the SAM CLI
 
 * [CLion](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
 * [GoLand](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [IntelliJ](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
 * [WebStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
 * [Rider](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
 * [PhpStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
@@ -104,15 +103,17 @@ You can find more information and examples about filtering Lambda function logs 
 
 ## Tests
 
-Tests are defined in the `tests` folder in this project. Use PIP to install the test dependencies and run tests.
+Tests are defined in the `tests` folder in this project. Use PIP to install the test dependencies and run tests.  Make sure your environment var `PYTHONPATH` is set to the project root directory.
 
 ```bash
-cloud-resume-challenge-backend$ pip install -r tests/requirements.txt --user
+cloud-resume-challenge-backend$ export PYTHONPATH="$PWD"
+cloud-resume-challenge-backend$ pip install -r requirements.txt --user
 # unit test
-cloud-resume-challenge-backend$ python -m pytest tests/unit -v
+cloud-resume-challenge-backend$ pytest -v tests/unit/*
 # integration test, requiring deploying the stack first.
-# Create the env variable AWS_SAM_STACK_NAME with the name of the stack we are testing
-cloud-resume-challenge-backend$ AWS_SAM_STACK_NAME=<stack-name> python -m pytest tests/integration -v
+# NOTE: I deviated from the original documentation by 
+#       hardcoding the stack name in the integration so change that there.
+cloud-resume-challenge-backend$ pytest -v tests/integration/*
 ```
 
 ## Cleanup

@@ -9,6 +9,11 @@ Globals:
     Timeout: 3
 
 Resources:
+  VisitorApiGateway:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: This API supports the update and retrieval of a visitors object in AWS DynamoDB for the Cloud Resume Challenge.
+
   VisitorLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -24,6 +29,8 @@ Resources:
           Properties:
             Path: /visitor
             Method: get
+            RestApiId:
+              Ref: VisitorApiGateway
       Environment:
         Variables: 
           tableName: !Ref VisitorNoSqlTable
