@@ -247,4 +247,7 @@ packaged.yaml
 samconfig.toml
 events/*.json
 
+# Cursor
+.cursor/
+
 # End of https://www.gitignore.io/api/osx,linux,python,windows,pycharm,visualstudiocode

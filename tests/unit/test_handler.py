@@ -2,7 +2,7 @@ import os
 import json
 import boto3
 import pytest
-from moto import mock_dynamodb2
+from moto import mock_dynamodb
 from datetime import datetime
 from datetime import date
 
@@ -60,7 +60,7 @@ def apigw_event():
         "path": "/visitor",
     }
 
-@mock_dynamodb2
+@mock_dynamodb
 def test_update_visitor_count(apigw_event):
     """
     script for lambda function already establishs a boto3 client when imported
@@ -95,7 +95,7 @@ def test_update_visitor_count(apigw_event):
     assert int(item[data_field]['N']) == 1
 
 
-@mock_dynamodb2
+@mock_dynamodb
 def test_update_last_viewed_date(apigw_event):
 
     import visitor.app 
@@ -126,7 +126,7 @@ def test_update_last_viewed_date(apigw_event):
     item = response['Item']
     assert datetime.strptime(item[data_field]['S'], '%Y-%m-%dT%H:%M:%SZ').date() == date.today()
 
-@mock_dynamodb2
+@mock_dynamodb
 def test_get_data(apigw_event):
 
     import visitor.app 
@@ -168,7 +168,7 @@ def test_get_env_vars_with_monkeypatch(monkeypatch):
     monkeypatch.setenv('tableName', 'visitor_test_main')
     monkeypatch.setenv('partitionKey', 'visitorMainId')
 
-@mock_dynamodb2
+@mock_dynamodb
 def test_main_handler(apigw_event, test_get_env_vars_with_monkeypatch):
 
     import visitor.app 

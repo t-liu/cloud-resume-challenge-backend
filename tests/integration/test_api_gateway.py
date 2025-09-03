@@ -29,6 +29,23 @@ class TestApiGateway(TestCase):
         self.api_endpoint = api_outputs[0]["OutputValue"]
 
     def test_api_gateway(self):
+        
+        # update table with a date to prevent error
+        ddbClient = boto3.client('dynamodb','us-east-1')
+        table = 'visitors'
+        pk = 'visitorId'
+        column = 'lastViewedDate'
+        now = datetime.now()
+
+        response = ddbClient.update_item(
+            TableName=table,
+            Key={pk: {"N": "1"}},
+            UpdateExpression='SET ' + column + ' = :ts',
+            ExpressionAttributeValues={
+                ':ts': {"S": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+            }
+        )
+
         """
         Call the API Gateway endpoint and check the response
         """

@@ -1,6 +1,5 @@
 import os
 import json
-import string
 import boto3
 from datetime import datetime
 import botocore

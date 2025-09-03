@@ -15,9 +15,9 @@ Resources:
       Description: Get visitor count and last viewed date from DynamoDB visitor table
       CodeUri: visitor/
       Handler: app.lambda_handler
-      Runtime: python3.8
+      Runtime: python3.13
       Architectures:
-        - x86_64
+        - arm64
       Events:
         CallVisitorApi:
           Type: Api
