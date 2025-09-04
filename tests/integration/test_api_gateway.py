@@ -2,8 +2,7 @@ import os
 import boto3
 import requests
 from unittest import TestCase
-from datetime import datetime
-from datetime import date
+from datetime import datetime, date, timezone
 
 class TestApiGateway(TestCase):
     api_endpoint: str
@@ -53,4 +52,4 @@ class TestApiGateway(TestCase):
         responseLastViewedAsDate = datetime.strptime(response.json()["lastViewed"]["S"], '%Y-%m-%dT%H:%M:%SZ').date()
 
         self.assertGreaterEqual(int(response.json()["count"]["N"]), 1)        
-        self.assertEqual(responseLastViewedAsDate, datetime.utcnow().date())
+        self.assertEqual(responseLastViewedAsDate, datetime.now(timezone.utc).date())
