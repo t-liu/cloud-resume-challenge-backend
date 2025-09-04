@@ -1,10 +1,14 @@
 import os
+import sys
 import json
 import boto3
 import pytest
 from moto import mock_dynamodb
 from datetime import datetime
 from datetime import date
+
+# Add the project root to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 @pytest.fixture()
 def apigw_event():
