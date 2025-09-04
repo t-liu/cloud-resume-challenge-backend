@@ -54,8 +54,8 @@ jobs:
           aws-region: us-east-1
       
       # sam build 
-      - name: build lambda-like docker container
-        run: sam build --use-container
+      - name: build lambda function
+        run: sam build
 
       # sam deploy
       - name: deploy sam application to aws
