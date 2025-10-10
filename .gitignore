@@ -48,6 +48,7 @@ Temporary Items
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 # User-specific stuff:
+.idea/
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/dictionaries
@@ -134,20 +135,30 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+pip-wheel-metadata/
+share/python-wheels/
+Pipfile.lock
+
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+MANIFEST
 
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Celery Stuff
+celerybeat-schedule
+celerybeat.pid
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
+.nox/
 .coverage
 .coverage.*
 .cache
@@ -156,6 +167,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+*.py,cover
 
 # Translations
 *.mo
@@ -164,6 +176,12 @@ coverage.xml
 # Flask stuff:
 instance/
 .webassets-cache
+
+# Django stuff
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
 
 # Scrapy stuff:
 .scrapy
@@ -209,6 +227,7 @@ venv.bak/
 .mypy_cache/
 
 ### VisualStudioCode ###
+.vscode/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json

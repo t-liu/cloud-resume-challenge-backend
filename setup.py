@@ -9,8 +9,8 @@ setup(
     author='Thomas S. Liu',
     author_email='thomas.s.liu@gmail.com',
     url='https://resume.thomasliu.click',
-    packages=find_packages(include=['cloud-resume-challenge-backend', 'cloud-resume-challenge-backend.*']),
-    python_requires='>=3.13',
+    packages=find_packages(include=['visitor', 'visitor.*']),
+    python_requires='>=3.9',
     classifiers=[
         'Programming Language :: Python :: 3.13',
         'Operating System :: OS Independent',
