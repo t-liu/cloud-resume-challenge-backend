@@ -1,119 +1,108 @@
 import os
 import json
-import boto3
+import logging
 from datetime import datetime
+from typing import Dict, Any
+import boto3
 import botocore
 
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 """
-note: there is only one record in this dynamodb table 
-       that holds a primary key of 1, the last viewed 
-       date in string format, and the total view count
+Note: There is only one record in this DynamoDB table 
+that holds a primary key of 1, the last viewed 
+date in string format, and the total view count.
 """
 
-ddbClient = boto3.client('dynamodb','us-east-1')
+# Initialize DynamoDB client
+# In Lambda, AWS_REGION is automatically set; for local testing, default to us-east-1
+region = os.environ.get('AWS_REGION', 'us-east-1')
+ddbClient = boto3.client('dynamodb', region_name=region)
 
-def update_visitor_count(table, pk, column):
 
-    response = ddbClient.update_item(
-        TableName=table,
-        Key={pk: {"N": "1"}},
-        UpdateExpression='ADD ' + column + ' :incr',
-        ExpressionAttributeValues={
-            ':incr': {"N": "1"}
-        }
-    )
-    print(response)
-    if 'Item' in response: 
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Lambda handler that increments visitor count and updates last viewed date.
+    
+    Args:
+        event: API Gateway event
+        context: Lambda context
+        
+    Returns:
+        API Gateway response with visitor data
+    """
+    ddb_table_name = os.environ.get('tableName')
+    ddb_partition_key = os.environ.get('partitionKey')
+    
+    # Validate environment variables
+    if not ddb_table_name or not ddb_partition_key:
+        logger.error("Missing required environment variables: tableName or partitionKey")
         return {
-            "statusCode": 200,
+            "statusCode": 500,
             "headers": {
+                "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*"
             },
-            "body": json.dumps(response)
+            "body": json.dumps({"error": "Internal server error"}),
+            "isBase64Encoded": False
         }
-        # return response['Item'][column]
-    else:
-        return {
-            "statusCode": 404,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": "Not Found"
-        }
-
-def update_last_viewed_date(table, pk, column):
-
-    now = datetime.now()
-    response = ddbClient.update_item(
-        TableName=table,
-        Key={pk: {"N": "1"}},
-        UpdateExpression='SET ' + column + ' = :ts',
-        ExpressionAttributeValues={
-            ':ts': {"S": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
-        }
-    )
-    print(response)
-    if 'Item' in response:        
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": json.dumps(response)
-        }
-        # return response['Item'][column]
-    else:
-        return {
-            "statusCode": 404,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
-            "body": "Not Found"
-        }  
-
-def get_visitor_data(table, pk, column):
     
     try:
-        response = ddbClient.get_item(
-            TableName=table,
-            Key={pk: {"N": "1"}}
+        now = datetime.now()
+        
+        # Single optimized DynamoDB operation that:
+        # 1. Increments visitor count
+        # 2. Updates last viewed date
+        # 3. Returns all updated values
+        response = ddbClient.update_item(
+            TableName=ddb_table_name,
+            Key={ddb_partition_key: {"N": "1"}},
+            UpdateExpression='ADD vc :incr SET lastViewedDate = :ts',
+            ExpressionAttributeValues={
+                ':incr': {"N": "1"},
+                ':ts': {"S": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+            },
+            ReturnValues='ALL_NEW'
         )
-    except botocore.exceptions.ClientError as e:
-        print(e.response['Error']['Message'])
-    else:
-        print(response)
-
-    if 'Item' in response:
-        return response['Item'][column]
-    else:
+        
+        logger.info(f"Successfully updated visitor data: {response}")
+        
+        item = response.get('Attributes', {})
+        
         return {
-            'statusCode': '404',
-            'body': 'Not Found'
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+            },
+            "body": json.dumps({
+                "lastViewed": item.get('lastViewedDate'),
+                "count": item.get('vc')
+            }),
+            "isBase64Encoded": False
         }
-
-def lambda_handler(event, context):
-
-    ddbTableName = os.environ['tableName']
-    ddbPartitionKey = os.environ['partitionKey']
-    
-    # get last viewed date and store to response date var
-    responseLastViewedDate = get_visitor_data(ddbTableName, ddbPartitionKey, 'lastViewedDate')
-    
-    # update visitor count & last viewed date
-    update_visitor_count(ddbTableName, ddbPartitionKey, 'vc')
-    update_last_viewed_date(ddbTableName, ddbPartitionKey, 'lastViewedDate')
-    
-    # api gateway requires all four keys in the return when using lambda proxy integration
-    # body must be stringify hence the json dumps
-    return {
-        "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"
-        },
-        "body": json.dumps({
-            "lastViewed": responseLastViewedDate,
-            "count": get_visitor_data(ddbTableName, ddbPartitionKey, 'vc')
-        }),
-        "isBase64Encoded": "false"
-    } 
+        
+    except botocore.exceptions.ClientError as e:
+        logger.error(f"DynamoDB error: {e.response['Error']['Message']}")
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+            },
+            "body": json.dumps({"error": "Failed to update visitor data"}),
+            "isBase64Encoded": False
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+            },
+            "body": json.dumps({"error": "Internal server error"}),
+            "isBase64Encoded": False
+        }
