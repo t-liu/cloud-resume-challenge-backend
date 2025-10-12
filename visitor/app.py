@@ -17,21 +17,20 @@ date in string format, and the total view count.
 """
 
 # Initialize DynamoDB client
-# In Lambda, AWS_REGION is automatically set; for local testing, default to us-east-1
 region = os.environ.get('AWS_REGION', 'us-east-1')
 ddbClient = boto3.client('dynamodb', region_name=region)
 
-
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Lambda handler that increments visitor count and updates last viewed date.
+    Lambda handler that retrieves the previous last viewed date,
+    increments visitor count, and updates last viewed date.
     
     Args:
         event: API Gateway event
         context: Lambda context
         
     Returns:
-        API Gateway response with visitor data
+        API Gateway response with visitor data including previous and new last viewed date
     """
     ddb_table_name = os.environ.get('tableName')
     ddb_partition_key = os.environ.get('partitionKey')
@@ -50,13 +49,24 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     
     try:
-        now = datetime.now()
+        # Step 1: Retrieve the current record to get the previous lastViewedDate
+        response_get = ddbClient.get_item(
+            TableName=ddb_table_name,
+            Key={ddb_partition_key: {"N": "1"}},
+            ProjectionExpression='lastViewedDate, vc'  # Fetch only needed attributes
+        )
         
-        # Single optimized DynamoDB operation that:
-        # 1. Increments visitor count
-        # 2. Updates last viewed date
-        # 3. Returns all updated values
-        response = ddbClient.update_item(
+        # Extract previous last viewed date (handle case where item doesn't exist)
+        previous_last_viewed = None
+        item = response_get.get('Item')
+        if item and 'lastViewedDate' in item:
+            previous_last_viewed = item['lastViewedDate'].get('S')
+        
+        logger.info(f"Retrieved previous last viewed date: {previous_last_viewed}")
+        
+        # Step 2: Update the record
+        now = datetime.now()
+        response_update = ddbClient.update_item(
             TableName=ddb_table_name,
             Key={ddb_partition_key: {"N": "1"}},
             UpdateExpression='ADD vc :incr SET lastViewedDate = :ts',
@@ -67,10 +77,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             ReturnValues='ALL_NEW'
         )
         
-        logger.info(f"Successfully updated visitor data: {response}")
+        logger.info(f"Successfully updated visitor data: {response_update}")
         
-        item = response.get('Attributes', {})
+        item = response_update.get('Attributes', {})
         
+        # Step 3: Return both the previous and new last viewed date
         return {
             "statusCode": 200,
             "headers": {
@@ -78,8 +89,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "Access-Control-Allow-Origin": "*"
             },
             "body": json.dumps({
-                "lastViewed": item.get('lastViewedDate'),
-                "count": item.get('vc')
+                "previousLastViewed": previous_last_viewed,  # Previous date
+                "lastViewed": item.get('lastViewedDate', {}).get('S'),  # New date
+                "count": item.get('vc', {}).get('N')  # Updated count
             }),
             "isBase64Encoded": False
         }
@@ -92,7 +104,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*"
             },
-            "body": json.dumps({"error": "Failed to update visitor data"}),
+            "body": json.dumps({"error": "Failed to process visitor data"}),
             "isBase64Encoded": False
         }
     except Exception as e:

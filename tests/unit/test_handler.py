@@ -102,13 +102,17 @@ def test_lambda_handler_first_visit(apigw_event, set_env_vars):
     response_body = json.loads(response["body"])
     assert "count" in response_body
     assert "lastViewed" in response_body
+    assert "previousLastViewed" in response_body
     
     # Verify count is 1 on first visit
-    assert int(response_body["count"]["N"]) == 1
+    assert response_body["count"] == "1"
     
-    # Verify date format
-    assert response_body["lastViewed"]["S"]
-    datetime.strptime(response_body["lastViewed"]["S"], '%Y-%m-%dT%H:%M:%SZ')
+    # Verify previousLastViewed is None on first visit
+    assert response_body["previousLastViewed"] is None
+    
+    # Verify date format for lastViewed
+    assert response_body["lastViewed"]
+    datetime.strptime(response_body["lastViewed"], '%Y-%m-%dT%H:%M:%SZ')
 
 
 @mock_dynamodb
@@ -134,19 +138,23 @@ def test_lambda_handler_multiple_visits(apigw_event, set_env_vars):
     response1 = visitor.app.lambda_handler(apigw_event, "")
     assert response1["statusCode"] == 200
     response_body1 = json.loads(response1["body"])
-    assert int(response_body1["count"]["N"]) == 1
+    assert response_body1["count"] == "1"
+    assert response_body1["previousLastViewed"] is None
+    first_visit_date = response_body1["lastViewed"]
     
     # Make second call
     response2 = visitor.app.lambda_handler(apigw_event, "")
     assert response2["statusCode"] == 200
     response_body2 = json.loads(response2["body"])
-    assert int(response_body2["count"]["N"]) == 2
+    assert response_body2["count"] == "2"
+    assert response_body2["previousLastViewed"] == first_visit_date
     
     # Make third call
     response3 = visitor.app.lambda_handler(apigw_event, "")
     assert response3["statusCode"] == 200
     response_body3 = json.loads(response3["body"])
-    assert int(response_body3["count"]["N"]) == 3
+    assert response_body3["count"] == "3"
+    assert response_body3["previousLastViewed"] == response_body2["lastViewed"]
 
 
 @mock_dynamodb
@@ -169,11 +177,12 @@ def test_lambda_handler_existing_data(apigw_event, set_env_vars):
     )
     
     # Insert existing data
+    existing_date = '2024-01-01T00:00:00Z'
     dynamodb.put_item(
         TableName=table_name,
         Item={
             partition_key: {'N': "1"},
-            'lastViewedDate': {'S': '2024-01-01T00:00:00Z'},
+            'lastViewedDate': {'S': existing_date},
             'vc': {'N': "100"}
         }
     )
@@ -185,10 +194,16 @@ def test_lambda_handler_existing_data(apigw_event, set_env_vars):
     response_body = json.loads(response["body"])
     
     # Count should be incremented to 101
-    assert int(response_body["count"]["N"]) == 101
+    assert response_body["count"] == "101"
     
-    # Date should be updated (not the old date)
-    assert response_body["lastViewed"]["S"] != "2024-01-01T00:00:00Z"
+    # Previous last viewed date should match the existing date
+    assert response_body["previousLastViewed"] == existing_date
+    
+    # New date should be different from the existing date
+    assert response_body["lastViewed"] != existing_date
+    
+    # Verify new date format
+    datetime.strptime(response_body["lastViewed"], '%Y-%m-%dT%H:%M:%SZ')
 
 
 def test_lambda_handler_missing_env_vars(apigw_event, monkeypatch):
