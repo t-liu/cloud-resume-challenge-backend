@@ -3,7 +3,7 @@
 [function_build_definitions]
 [function_build_definitions.7ba6c72c-06bb-4507-8239-57378d5f4428]
 codeuri = "/Users/tliu/Documents/cloud-resume-challenge-backend/visitor"
-runtime = "python3.8"
+runtime = "python3.12"
 architecture = "x86_64"
 manifest_hash = ""
 packagetype = "Zip"

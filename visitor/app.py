@@ -2,7 +2,6 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any
 import boto3
 import botocore
 
@@ -20,7 +19,7 @@ date in string format, and the total view count.
 region = os.environ.get('AWS_REGION', 'us-east-1')
 ddbClient = boto3.client('dynamodb', region_name=region)
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: dict[str, any], context: any) -> dict[str, any]:
     """
     Lambda handler that retrieves the previous last viewed date,
     increments visitor count, and updates last viewed date.

@@ -45,7 +45,7 @@ Resources:
   ApiMapping:
     Type: 'AWS::ApiGatewayV2::ApiMapping'
     Properties:
-      DomainName: api.thomasliu.click
+      DomainName: resumeapi.thomasliu.click
       ApiId: !Ref ServerlessRestApi
       Stage: !Ref ServerlessRestApiProdStage
 
