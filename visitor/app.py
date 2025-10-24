@@ -4,39 +4,143 @@ import logging
 from datetime import datetime
 import boto3
 import botocore
+import urllib.request
+import urllib.error
+from uuid import uuid4
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-"""
-Note: There is only one record in this DynamoDB table 
-that holds a primary key of 1, the last viewed 
-date in string format, and the total view count.
-"""
-
 # Initialize DynamoDB client
 region = os.environ.get('AWS_REGION', 'us-east-1')
 ddbClient = boto3.client('dynamodb', region_name=region)
 
-def lambda_handler(event: dict[str, any], context: any) -> dict[str, any]:
+def get_geolocation(ip_address):
+
+    if not ip_address or ip_address == '127.0.0.1':
+        return None
+        
+    try:
+        url = f"http://ip-api.com/json/{ip_address}?fields=status,country,countryCode,region,regionName,city,lat,lon,timezone,isp"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=2) as response:
+            data = json.loads(response.read().decode())
+            if data.get('status') == 'success':
+                return {
+                    'country': data.get('country'),
+                    'countryCode': data.get('countryCode'),
+                    'region': data.get('regionName'),
+                    'city': data.get('city'),
+                    'latitude': data.get('lat'),
+                    'longitude': data.get('lon'),
+                    'timezone': data.get('timezone'),
+                    'isp': data.get('isp')
+                }
+    except Exception as e:
+        logger.warning(f"Failed to get geolocation for {ip_address}: {str(e)}")
+    
+    return None
+
+def parse_user_agent(user_agent):
+
+    if not user_agent:
+        return {'browser': 'Unknown', 'os': 'Unknown'}
+    
+    # Simple browser detection
+    browser = 'Unknown'
+    if 'Edg/' in user_agent:
+        browser = 'Edge'
+    elif 'Chrome/' in user_agent:
+        browser = 'Chrome'
+    elif 'Firefox/' in user_agent:
+        browser = 'Firefox'
+    elif 'Safari/' in user_agent and 'Chrome' not in user_agent:
+        browser = 'Safari'
+    
+    # Simple OS detection
+    os_name = 'Unknown'
+    if 'Windows' in user_agent:
+        os_name = 'Windows'
+    elif 'Macintosh' in user_agent or 'Mac OS X' in user_agent:
+        os_name = 'macOS'
+    elif 'Linux' in user_agent:
+        os_name = 'Linux'
+    elif 'Android' in user_agent:
+        os_name = 'Android'
+    elif 'iPhone' in user_agent or 'iPad' in user_agent:
+        os_name = 'iOS'
+    
+    return {'browser': browser, 'os': os_name}
+
+def get_next_visit_number(table_name, starting_number=700):
+
+    try:
+        # Try to increment the counter atomically
+        response = ddbClient.update_item(
+            TableName=table_name,
+            Key={'visitId': {'S': 'COUNTER'}},
+            UpdateExpression='ADD visitCount :incr SET lastUpdated = :ts',
+            ExpressionAttributeValues={
+                ':incr': {'N': '1'},
+                ':ts': {'S': datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+            },
+            ReturnValues='UPDATED_NEW'
+        )
+        
+        visit_number = int(response['Attributes']['visitCount']['N'])
+        logger.info(f"Incremented counter to: {visit_number}")
+        return visit_number
+        
+    except botocore.exceptions.ClientError as e:
+        error_code = e.response['Error']['Code']
+        
+        # If item doesn't exist, create it with starting_number
+        if error_code == 'ValidationException' or 'Item' not in str(e):
+            logger.info(f"COUNTER doesn't exist, initializing with {starting_number}")
+            try:
+                # Initialize counter
+                ddbClient.put_item(
+                    TableName=table_name,
+                    Item={
+                        'visitId': {'S': 'COUNTER'},
+                        'visitCount': {'N': str(starting_number)},
+                        'lastUpdated': {'S': datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+                    },
+                    ConditionExpression='attribute_not_exists(visitId)'  # Only if doesn't exist
+                )
+                return starting_number
+            except botocore.exceptions.ClientError as create_error:
+                # If another Lambda created it simultaneously, try to get it
+                if create_error.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                    logger.warning("COUNTER was created by another request, retrying...")
+                    return get_next_visit_number(table_name, starting_number)
+                else:
+                    logger.error(f"Failed to initialize counter: {str(create_error)}")
+                    # Return a fallback number
+                    return starting_number
+        else:
+            logger.error(f"Failed to get visit number: {str(e)}")
+            # Return a fallback number based on timestamp
+            return starting_number + int(datetime.now().timestamp() % 1000)
+
+def lambda_handler(event: dict, context: any) -> dict:
     """
-    Lambda handler that retrieves the previous last viewed date,
-    increments visitor count, and updates last viewed date.
+    Lambda handler that records detailed visitor information
     
     Args:
-        event: API Gateway event
+        event: API Gateway event containing request details
         context: Lambda context
         
     Returns:
-        API Gateway response with visitor data including previous and new last viewed date
+        API Gateway response with success/failure status
     """
     ddb_table_name = os.environ.get('tableName')
-    ddb_partition_key = os.environ.get('partitionKey')
+    starting_visit_number = int(os.environ.get('startingVisitNumber', '700'))
     
     # Validate environment variables
-    if not ddb_table_name or not ddb_partition_key:
-        logger.error("Missing required environment variables: tableName or partitionKey")
+    if not ddb_table_name:
+        logger.error("Missing required environment variable: tableName")
         return {
             "statusCode": 500,
             "headers": {
@@ -48,39 +152,77 @@ def lambda_handler(event: dict[str, any], context: any) -> dict[str, any]:
         }
     
     try:
-        # Step 1: Retrieve the current record to get the previous lastViewedDate
-        response_get = ddbClient.get_item(
-            TableName=ddb_table_name,
-            Key={ddb_partition_key: {"N": "1"}},
-            ProjectionExpression='lastViewedDate, vc'  # Fetch only needed attributes
+        # Get next sequential visit number
+        visit_num_id = get_next_visit_number(ddb_table_name, starting_visit_number)
+        
+        # Extract request information from API Gateway event
+        request_context = event.get('requestContext', {})
+        headers = event.get('headers', {})
+        
+        # Get IP address (check multiple possible locations)
+        ip_address = (
+            headers.get('X-Forwarded-For', '').split(',')[0].strip() or
+            headers.get('x-forwarded-for', '').split(',')[0].strip() or
+            request_context.get('identity', {}).get('sourceIp') or
+            'Unknown'
         )
         
-        # Extract previous last viewed date (handle case where item doesn't exist)
-        previous_last_viewed = None
-        item = response_get.get('Item')
-        if item and 'lastViewedDate' in item:
-            previous_last_viewed = item['lastViewedDate'].get('S')
+        # Get user agent
+        user_agent = headers.get('User-Agent') or headers.get('user-agent', 'Unknown')
         
-        logger.info(f"Retrieved previous last viewed date: {previous_last_viewed}")
+        # Parse browser and OS
+        browser_info = parse_user_agent(user_agent)
         
-        # Step 2: Update the record
+        # Get geolocation
+        geo_data = get_geolocation(ip_address)
+        
+        # Get referer
+        referer = headers.get('Referer') or headers.get('referer', 'Direct')
+        
+        # Create timestamp and unique ID
         now = datetime.now()
-        response_update = ddbClient.update_item(
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        visit_id = str(uuid4())
+        
+        # Prepare DynamoDB item
+        item = {
+            'visitId': {'S': visit_id},
+            'visitNumId': {'N': str(visit_num_id)},  # Sequential counter
+            'timestamp': {'S': timestamp},
+            'ipAddress': {'S': ip_address},
+            'userAgent': {'S': user_agent},
+            'browser': {'S': browser_info['browser']},
+            'os': {'S': browser_info['os']},
+            'referer': {'S': referer}
+        }
+        
+        # Add geolocation data if available
+        if geo_data:
+            if geo_data.get('country'):
+                item['country'] = {'S': geo_data['country']}
+            if geo_data.get('countryCode'):
+                item['countryCode'] = {'S': geo_data['countryCode']}
+            if geo_data.get('region'):
+                item['region'] = {'S': geo_data['region']}
+            if geo_data.get('city'):
+                item['city'] = {'S': geo_data['city']}
+            if geo_data.get('latitude') is not None:
+                item['latitude'] = {'N': str(geo_data['latitude'])}
+            if geo_data.get('longitude') is not None:
+                item['longitude'] = {'N': str(geo_data['longitude'])}
+            if geo_data.get('timezone'):
+                item['timezone'] = {'S': geo_data['timezone']}
+            if geo_data.get('isp'):
+                item['isp'] = {'S': geo_data['isp']}
+        
+        # Store the visit record
+        ddbClient.put_item(
             TableName=ddb_table_name,
-            Key={ddb_partition_key: {"N": "1"}},
-            UpdateExpression='ADD vc :incr SET lastViewedDate = :ts',
-            ExpressionAttributeValues={
-                ':incr': {"N": "1"},
-                ':ts': {"S": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
-            },
-            ReturnValues='ALL_NEW'
+            Item=item
         )
         
-        logger.info(f"Successfully updated visitor data: {response_update}")
+        logger.info(f"Successfully recorded visit: {visit_id} (#{visit_num_id})")
         
-        item = response_update.get('Attributes', {})
-        
-        # Step 3: Return both the previous and new last viewed date
         return {
             "statusCode": 200,
             "headers": {
@@ -88,9 +230,10 @@ def lambda_handler(event: dict[str, any], context: any) -> dict[str, any]:
                 "Access-Control-Allow-Origin": "*"
             },
             "body": json.dumps({
-                "previousLastViewed": previous_last_viewed,  # Previous date
-                "lastViewed": item.get('lastViewedDate', {}).get('S'),  # New date
-                "count": item.get('vc', {}).get('N')  # Updated count
+                "success": True,
+                "visitId": visit_id,
+                "visitNumber": visit_num_id,
+                "message": "Visit recorded successfully"
             }),
             "isBase64Encoded": False
         }
@@ -103,7 +246,7 @@ def lambda_handler(event: dict[str, any], context: any) -> dict[str, any]:
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*"
             },
-            "body": json.dumps({"error": "Failed to process visitor data"}),
+            "body": json.dumps({"error": "Failed to record visitor data"}),
             "isBase64Encoded": False
         }
     except Exception as e:

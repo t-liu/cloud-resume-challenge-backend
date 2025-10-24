@@ -6,13 +6,13 @@ Description: >
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 10
 
 Resources:
   VisitorLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Description: Get visitor count and last viewed date from DynamoDB visitor table
+      Description: Record detailed visitor information in DynamoDB
       CodeUri: visitor/
       Handler: app.lambda_handler
       Runtime: python3.13
@@ -26,21 +26,43 @@ Resources:
             Method: get
       Environment:
         Variables: 
-          tableName: !Ref VisitorNoSqlTable
-          partitionKey: visitorId
+          tableName: !Ref VisitorDetailsTable
+          startingVisitNumber: '700'
       Policies:
       - DynamoDBCrudPolicy:
-          TableName: !Ref VisitorNoSqlTable
-  
-  VisitorNoSqlTable:
-    Type: AWS::Serverless::SimpleTable
+          TableName: !Ref VisitorDetailsTable
+
+  # NEW TABLE: Detailed visitor tracking with individual records
+  VisitorDetailsTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      TableName: visitors
-      PrimaryKey:
-        Name: visitorId
-        Type: Number
+      TableName: visitor-details
+      BillingMode: PAY_PER_REQUEST  # Better for variable traffic
+      AttributeDefinitions:
+        - AttributeName: visitId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: visitId
+          KeyType: HASH
+      # Global Secondary Index for querying by timestamp
+      GlobalSecondaryIndexes:
+        - IndexName: TimestampIndex
+          KeySchema:
+            - AttributeName: timestamp
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
       SSESpecification:
         SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: CloudResumeChallenge
+        - Key: Purpose
+          Value: VisitorTracking
 
   ApiMapping:
     Type: 'AWS::ApiGatewayV2::ApiMapping'
@@ -55,8 +77,11 @@ Outputs:
   # Find out more about other implicit resources you can reference within SAM
   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
   VisitorApi:
-    Description: "API Gateway endpoint URL in production stage for Visitor API function"
+    Description: "API Gateway endpoint URL in production stage for new version of Visitor API function"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ServerlessRestApiProdStage}/visitor/"
   VisitorFunction:
     Description: "Visitor Lambda Function ARN"
     Value: !GetAtt VisitorLambdaFunction.Arn
+  VisitorDetailsTableName:
+    Description: "DynamoDB table for detailed visitor tracking"
+    Value: !Ref VisitorDetailsTable
