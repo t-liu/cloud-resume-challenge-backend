@@ -73,7 +73,7 @@ def parse_user_agent(user_agent):
     
     return {'browser': browser, 'os': os_name}
 
-def get_next_visit_number(table_name, starting_number=700):
+def get_next_visit_number(table_name, starting_number=1):
 
     try:
         # Try to increment the counter atomically
@@ -136,7 +136,7 @@ def lambda_handler(event: dict, context: any) -> dict:
         API Gateway response with success/failure status
     """
     ddb_table_name = os.environ.get('tableName')
-    starting_visit_number = int(os.environ.get('startingVisitNumber', '700'))
+    starting_visit_number = int(os.environ.get('startingVisitNumber', '1'))
     
     # Validate environment variables
     if not ddb_table_name:
@@ -187,7 +187,7 @@ def lambda_handler(event: dict, context: any) -> dict:
         # Prepare DynamoDB item
         item = {
             'visitId': {'S': visit_id},
-            'visitNumId': {'N': str(visit_num_id)},  # Sequential counter
+            'visitNumId': {'N': str(visit_num_id)},
             'timestamp': {'S': timestamp},
             'ipAddress': {'S': ip_address},
             'userAgent': {'S': user_agent},
@@ -233,6 +233,7 @@ def lambda_handler(event: dict, context: any) -> dict:
                 "success": True,
                 "visitId": visit_id,
                 "visitNumber": visit_num_id,
+                "timestamp": timestamp,
                 "message": "Visit recorded successfully"
             }),
             "isBase64Encoded": False
