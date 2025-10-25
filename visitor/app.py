@@ -73,24 +73,35 @@ def parse_user_agent(user_agent):
     
     return {'browser': browser, 'os': os_name}
 
-def get_next_visit_number(table_name, starting_number=700):
+def get_next_visit_number(table_name, starting_number=1):
 
+    current_timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    
     try:
-        # Try to increment the counter atomically
         response = ddbClient.update_item(
             TableName=table_name,
             Key={'visitId': {'S': 'COUNTER'}},
             UpdateExpression='ADD visitCount :incr SET lastUpdated = :ts',
             ExpressionAttributeValues={
                 ':incr': {'N': '1'},
-                ':ts': {'S': datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+                ':ts': {'S': current_timestamp}
             },
-            ReturnValues='UPDATED_NEW'
+            ReturnValues='ALL_OLD'
         )
         
-        visit_number = int(response['Attributes']['visitCount']['N'])
-        logger.info(f"Incremented counter to: {visit_number}")
-        return visit_number
+        # Get the previous lastUpdated (before this update)
+        previous_last_updated = None
+        if 'Attributes' in response and 'lastUpdated' in response['Attributes']:
+            previous_last_updated = response['Attributes']['lastUpdated']['S']
+        
+        # Get the new count (we need to add 1 to the old count since we used ALL_OLD)
+        if 'Attributes' in response and 'visitCount' in response['Attributes']:
+            visit_number = int(response['Attributes']['visitCount']['N']) + 1
+        else:
+            visit_number = starting_number
+        
+        logger.info(f"Incremented counter to: {visit_number}, previous update: {previous_last_updated}")
+        return visit_number, previous_last_updated
         
     except botocore.exceptions.ClientError as e:
         error_code = e.response['Error']['Code']
@@ -125,18 +136,9 @@ def get_next_visit_number(table_name, starting_number=700):
             return starting_number + int(datetime.now().timestamp() % 1000)
 
 def lambda_handler(event: dict, context: any) -> dict:
-    """
-    Lambda handler that records detailed visitor information
-    
-    Args:
-        event: API Gateway event containing request details
-        context: Lambda context
-        
-    Returns:
-        API Gateway response with success/failure status
-    """
+
     ddb_table_name = os.environ.get('tableName')
-    starting_visit_number = int(os.environ.get('startingVisitNumber', '700'))
+    starting_visit_number = int(os.environ.get('startingVisitNumber', '1'))
     
     # Validate environment variables
     if not ddb_table_name:
@@ -153,7 +155,7 @@ def lambda_handler(event: dict, context: any) -> dict:
     
     try:
         # Get next sequential visit number
-        visit_num_id = get_next_visit_number(ddb_table_name, starting_visit_number)
+        visit_num_id, previous_last_updated = get_next_visit_number(ddb_table_name, starting_visit_number)
         
         # Extract request information from API Gateway event
         request_context = event.get('requestContext', {})
@@ -232,7 +234,8 @@ def lambda_handler(event: dict, context: any) -> dict:
             "body": json.dumps({
                 "success": True,
                 "visitId": visit_id,
-                "visitNumber": visit_num_id,
+                "visitorCount": visit_num_id,
+                "previousLastViewedDate": previous_last_updated,
                 "message": "Visit recorded successfully"
             }),
             "isBase64Encoded": False
