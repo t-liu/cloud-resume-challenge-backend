@@ -232,9 +232,8 @@ def lambda_handler(event: dict, context: any) -> dict:
             "body": json.dumps({
                 "success": True,
                 "visitId": visit_id,
-                "visitNumber": visit_num_id,
-                "timestamp": timestamp,
-                "message": "Visit recorded successfully"
+                "visitorCount": visit_num_id,
+                "previousLastViewedDate": timestamp
             }),
             "isBase64Encoded": False
         }
