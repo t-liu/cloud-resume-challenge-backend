@@ -141,7 +141,7 @@ def test_lambda_handler_creates_visit_record(apigw_event, set_env_vars, mock_geo
     visit_record = visit_items[0]
     assert 'timestamp' in visit_record
     assert 'ipAddress' in visit_record
-    assert visit_record['ipAddress']['S'] == '203.0.113.42'
+    assert visit_record['ipAddress']['S'] == '203.0.0.0'
     assert 'userAgent' in visit_record
     assert 'browser' in visit_record
     assert 'os' in visit_record
@@ -357,3 +357,50 @@ def test_parse_user_agent_unknown():
     result = parse_user_agent("")
     assert result['browser'] == 'Unknown'
     assert result['os'] == 'Unknown'
+
+def test_anonymize_ip_ipv4():
+    """Test IP anonymization for IPv4 addresses"""
+    from visitor.app import anonymize_ip
+    
+    assert anonymize_ip('192.168.1.1') == '192.168.0.0'
+    assert anonymize_ip('203.0.113.42') == '203.0.0.0'
+    assert anonymize_ip('10.0.0.1') == '10.0.0.0'
+
+
+def test_anonymize_ip_special_cases():
+    """Test IP anonymization handles edge cases"""
+    from visitor.app import anonymize_ip
+    
+    assert anonymize_ip('Unknown') == 'Unknown'
+    assert anonymize_ip('') == ''
+    assert anonymize_ip(None) is None
+
+
+def test_anonymize_ip_ipv6():
+    """Test IP anonymization for IPv6 addresses"""
+    from visitor.app import anonymize_ip
+    
+    result = anonymize_ip('2001:0db8:85a3:0000:0000:8a2e:0370:7334')
+    assert result.startswith('2001:0db8:85a3::')
+
+
+@mock_dynamodb
+def test_lambda_handler_options_request(set_env_vars):
+    """Test lambda handler returns proper CORS headers for OPTIONS request"""
+    import visitor.app
+    
+    options_event = {
+        "httpMethod": "OPTIONS",
+        "requestContext": {},
+        "headers": {}
+    }
+    
+    response = visitor.app.lambda_handler(options_event, "")
+    
+    # Verify response
+    assert response["statusCode"] == 200
+    assert "Access-Control-Allow-Origin" in response["headers"]
+    assert response["headers"]["Access-Control-Allow-Origin"] == "*"
+    assert "Access-Control-Allow-Methods" in response["headers"]
+    assert "GET,OPTIONS" in response["headers"]["Access-Control-Allow-Methods"]
+    assert response["body"] == ""

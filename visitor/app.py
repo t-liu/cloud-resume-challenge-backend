@@ -1,3 +1,4 @@
+from ipaddress import ip_address
 import os
 import json
 import logging
@@ -78,6 +79,22 @@ def parse_user_agent(user_agent):
     
     return {'browser': browser, 'os': os_name}
 
+def anonymize_ip(ip_address):
+    if not ip_address or ip_address == 'Unknown':
+        return ip_address
+
+    try:
+        parts = ip_address.split('.')
+        if len(parts) == 4:
+            return f"{parts[0]}.{parts[1]}.0.0"
+        elif ':' in ip_address:
+            ipv6_parts = ip_address.split(':')
+            if len(ipv6_parts) >= 3:
+                return ':'.join(ipv6_parts[:3]) + '::'
+    except Exception as e:
+        logger.warning(f"Failed to anonymize IP {ip_address}: {str(e)}")
+        return ip_address
+
 def get_next_visit_number(table_name, starting_number=1):
 
     current_timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -142,6 +159,19 @@ def get_next_visit_number(table_name, starting_number=1):
 
 def lambda_handler(event: dict, context: any) -> dict:
 
+    if event.get('httpMethod') == 'OPTIONS':
+        logger.info("Handling CORS preflight request")
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
+            },
+            "body": "",
+            "isBase64Encoded": False
+        }
+    
     ddb_table_name = os.environ.get('tableName')
     starting_visit_number = int(os.environ.get('startingVisitNumber', '1'))
     
@@ -167,12 +197,16 @@ def lambda_handler(event: dict, context: any) -> dict:
         headers = event.get('headers', {})
         
         # Get IP address (check multiple possible locations)
-        ip_address = (
+        raw_ip_address = (
             headers.get('X-Forwarded-For', '').split(',')[0].strip() or
             headers.get('x-forwarded-for', '').split(',')[0].strip() or
             request_context.get('identity', {}).get('sourceIp') or
             'Unknown'
         )
+
+        # Anonymize IP for privacy compliance
+        ip_address = anonymize_ip(raw_ip_address)
+        logger.info(f"IP anonymized: {raw_ip_address} -> {ip_address}")
         
         # Get user agent
         user_agent = headers.get('User-Agent') or headers.get('user-agent', 'Unknown')
@@ -181,7 +215,7 @@ def lambda_handler(event: dict, context: any) -> dict:
         browser_info = parse_user_agent(user_agent)
         
         # Get geolocation
-        geo_data = get_geolocation(ip_address)
+        geo_data = get_geolocation(raw_ip_address)
         
         # Get referer
         referer = headers.get('Referer') or headers.get('referer', 'Direct')

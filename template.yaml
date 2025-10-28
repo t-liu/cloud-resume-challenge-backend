@@ -7,6 +7,12 @@ Description: >
 Globals:
   Function:
     Timeout: 10
+  Api:
+    MethodSettings:
+      - ResourcePath: "/*"
+        HttpMethod: '*'
+        ThrottlingBurstLimit: 100 # max concurrent requests
+        ThrottlingRateLimit: 50 # requests per second
 
 Resources:
   VisitorLambdaFunction:
@@ -24,6 +30,11 @@ Resources:
           Properties:
             Path: /visitor
             Method: get
+        CallVisitorApiOptions:
+          Type: Api
+          Properties:
+            Path: /visitor
+            Method: options
       Environment:
         Variables: 
           tableName: !Ref VisitorDetailsTable
