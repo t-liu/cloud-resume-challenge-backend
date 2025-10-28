@@ -14,7 +14,12 @@ logger.setLevel(logging.INFO)
 
 # Initialize DynamoDB client
 region = os.environ.get('AWS_REGION', 'us-east-1')
-ddbClient = boto3.client('dynamodb', region_name=region)
+
+try:
+    ddbClient = boto3.client('dynamodb', region_name=region)
+except Exception as e:
+    logger.error(f"Failed to initialize DynamoDB client: {e}")
+    ddbClient = None
 
 def get_geolocation(ip_address):
 
