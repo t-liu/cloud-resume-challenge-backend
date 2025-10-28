@@ -10,9 +10,9 @@ setup(
     author_email='thomas.s.liu@gmail.com',
     url='https://resume.thomasliu.click',
     packages=find_packages(include=['visitor', 'visitor.*']),
-    python_requires='>=3.12',
+    python_requires='>=3.13',
     classifiers=[
-        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
         'Operating System :: OS Independent',
     ]
 )

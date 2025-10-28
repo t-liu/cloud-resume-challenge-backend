@@ -120,7 +120,7 @@ def get_next_visit_number(table_name, starting_number=1):
                     },
                     ConditionExpression='attribute_not_exists(visitId)'  # Only if doesn't exist
                 )
-                return starting_number
+                return starting_number, None
             except botocore.exceptions.ClientError as create_error:
                 # If another Lambda created it simultaneously, try to get it
                 if create_error.response['Error']['Code'] == 'ConditionalCheckFailedException':
@@ -129,11 +129,11 @@ def get_next_visit_number(table_name, starting_number=1):
                 else:
                     logger.error(f"Failed to initialize counter: {str(create_error)}")
                     # Return a fallback number
-                    return starting_number
+                    return starting_number, None
         else:
             logger.error(f"Failed to get visit number: {str(e)}")
             # Return a fallback number based on timestamp
-            return starting_number + int(datetime.now().timestamp() % 1000)
+            return starting_number + int(datetime.now().timestamp() % 1000), None
 
 def lambda_handler(event: dict, context: any) -> dict:
 
