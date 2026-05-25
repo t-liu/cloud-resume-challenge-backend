@@ -44,7 +44,7 @@ def get_geolocation(ip_addr):
                     'isp': data.get('isp')
                 }
     except Exception as e:
-        logger.warning(f"Failed to get geolocation for {ip_address}: {str(e)}")
+        logger.warning(f"Failed to get geolocation for {ip_addr}: {str(e)}")
     
     return None
 
