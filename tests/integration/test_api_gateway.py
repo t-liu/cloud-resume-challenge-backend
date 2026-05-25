@@ -1,9 +1,9 @@
-import os
+
 import boto3
 import requests
 import time
 from unittest import TestCase
-from datetime import datetime
+
 
 
 class TestApiGateway(TestCase):
@@ -125,7 +125,7 @@ class TestApiGateway(TestCase):
                 Key={'visitId': {'S': 'COUNTER'}}
             )
             initial_count = int(initial_response.get('Item', {}).get('visitCount', {}).get('N', '0'))
-        except:
+        except Exception:
             initial_count = 0
         
         # Make API calls

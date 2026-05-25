@@ -4,7 +4,7 @@ import json
 import boto3
 import pytest
 from moto import mock_aws
-from datetime import datetime
+
 from unittest.mock import patch, MagicMock
 
 # Add the project root to Python path
@@ -173,7 +173,7 @@ def test_lambda_handler_extracts_browser_info(apigw_event, set_env_vars, mock_ge
     )
     
     # Call lambda handler
-    response = visitor.app.lambda_handler(apigw_event, "")
+    _ = visitor.app.lambda_handler(apigw_event, "")
     
     # Verify browser and OS were extracted
     scan_response = dynamodb.scan(TableName=table_name)
