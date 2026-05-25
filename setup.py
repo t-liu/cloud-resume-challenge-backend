@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='cloud-resume-challenge-backend',
-    version='0.1.2',
+    version='0.1.3',
     description='Setting up a python package for backend of crc',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
