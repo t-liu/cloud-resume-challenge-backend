@@ -8,12 +8,14 @@ import botocore
 import urllib.request
 import urllib.error
 from uuid import uuid4
+from typing import Any
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize DynamoDB client
+ddbClient: Any = None
 region = os.environ.get('AWS_REGION', 'us-east-1')
 
 try:
@@ -157,7 +159,7 @@ def get_next_visit_number(table_name, starting_number=1):
             # Return a fallback number based on timestamp
             return starting_number + int(datetime.now().timestamp() % 1000), None
 
-def lambda_handler(event: dict, context: any) -> dict:
+def lambda_handler(event: dict, context: Any) -> dict:
 
     if event.get('httpMethod') == 'OPTIONS':
         logger.info("Handling CORS preflight request")
