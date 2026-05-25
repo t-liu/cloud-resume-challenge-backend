@@ -3,7 +3,7 @@ import sys
 import json
 import boto3
 import pytest
-from moto import mock_dynamodb
+from moto import mock_aws
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
@@ -96,7 +96,7 @@ def mock_geolocation():
         yield mock_urlopen
 
 
-@mock_dynamodb
+@mock_aws
 def test_lambda_handler_creates_visit_record(apigw_event, set_env_vars, mock_geolocation):
     """Test lambda handler creates a new visit record with all details"""
     import visitor.app
@@ -155,7 +155,7 @@ def test_lambda_handler_creates_visit_record(apigw_event, set_env_vars, mock_geo
     assert 'longitude' in visit_record
 
 
-@mock_dynamodb
+@mock_aws
 def test_lambda_handler_extracts_browser_info(apigw_event, set_env_vars, mock_geolocation):
     """Test lambda handler correctly parses browser and OS from user agent"""
     import visitor.app
@@ -186,7 +186,7 @@ def test_lambda_handler_extracts_browser_info(apigw_event, set_env_vars, mock_ge
     assert visit_record['os']['S'] == 'macOS'
 
 
-@mock_dynamodb
+@mock_aws
 def test_lambda_handler_handles_geolocation_failure(apigw_event, set_env_vars):
     """Test lambda handler gracefully handles geolocation API failures"""
     import visitor.app
@@ -227,7 +227,7 @@ def test_lambda_handler_handles_geolocation_failure(apigw_event, set_env_vars):
     assert 'country' not in visit_record or visit_record.get('country') is None
 
 
-@mock_dynamodb
+@mock_aws
 def test_lambda_handler_updates_counter(apigw_event, set_env_vars, mock_geolocation):
     """Test lambda handler maintains a counter record"""
     import visitor.app
@@ -266,7 +266,7 @@ def test_lambda_handler_updates_counter(apigw_event, set_env_vars, mock_geolocat
         pass
 
 
-@mock_dynamodb
+@mock_aws
 def test_lambda_handler_handles_missing_headers(set_env_vars, mock_geolocation):
     """Test lambda handler handles events with missing headers gracefully"""
     import visitor.app
@@ -384,7 +384,7 @@ def test_anonymize_ip_ipv6():
     assert result.startswith('2001:0db8:85a3::')
 
 
-@mock_dynamodb
+@mock_aws
 def test_lambda_handler_options_request(set_env_vars):
     """Test lambda handler returns proper CORS headers for OPTIONS request"""
     import visitor.app
