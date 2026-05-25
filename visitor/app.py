@@ -1,4 +1,4 @@
-from ipaddress import ip_address
+
 import os
 import json
 import logging
@@ -22,13 +22,13 @@ except Exception as e:
     logger.error(f"Failed to initialize DynamoDB client: {e}")
     ddbClient = None
 
-def get_geolocation(ip_address):
+def get_geolocation(ip_addr):
 
-    if not ip_address or ip_address == '127.0.0.1':
+    if not ip_addr or ip_addr == '127.0.0.1':
         return None
         
     try:
-        url = f"http://ip-api.com/json/{ip_address}?fields=status,country,countryCode,region,regionName,city,lat,lon,timezone,isp"
+        url = f"http://ip-api.com/json/{ip_addr}?fields=status,country,countryCode,region,regionName,city,lat,lon,timezone,isp"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=2) as response:
             data = json.loads(response.read().decode())
@@ -79,21 +79,21 @@ def parse_user_agent(user_agent):
     
     return {'browser': browser, 'os': os_name}
 
-def anonymize_ip(ip_address):
-    if not ip_address or ip_address == 'Unknown':
-        return ip_address
+def anonymize_ip(ip_addr):
+    if not ip_addr or ip_addr == 'Unknown':
+        return ip_addr
 
     try:
-        parts = ip_address.split('.')
+        parts = ip_addr.split('.')
         if len(parts) == 4:
             return f"{parts[0]}.{parts[1]}.0.0"
-        elif ':' in ip_address:
-            ipv6_parts = ip_address.split(':')
+        elif ':' in ip_addr:
+            ipv6_parts = ip_addr.split(':')
             if len(ipv6_parts) >= 3:
                 return ':'.join(ipv6_parts[:3]) + '::'
     except Exception as e:
-        logger.warning(f"Failed to anonymize IP {ip_address}: {str(e)}")
-        return ip_address
+        logger.warning(f"Failed to anonymize IP {ip_addr}: {str(e)}")
+        return ip_addr
 
 def get_next_visit_number(table_name, starting_number=1):
 
