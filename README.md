@@ -29,7 +29,7 @@ graph TD
     DDB_Counter -.->|Update| DDB[(💾 DynamoDB Table: visitor-details)]
     DDB_Log -.->|Insert| DDB
     
-    API Gateway -.->|Domain Routing| Route53[📡 resumeapi.thomasliu.click]
+    APIGW -.->|Domain Routing| Route53[📡 resumeapi.thomasliu.click]
 ```
 
 ### Request Flow
