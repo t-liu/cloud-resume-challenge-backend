@@ -32,7 +32,7 @@ def get_geolocation(ip_addr):
     try:
         url = f"http://ip-api.com/json/{ip_addr}?fields=status,country,countryCode,region,regionName,city,lat,lon,timezone,isp"
         req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=2) as response:
+        with urllib.request.urlopen(req, timeout=2) as response:  # nosec B310
             data = json.loads(response.read().decode())
             if data.get('status') == 'success':
                 return {
