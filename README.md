@@ -1,131 +1,230 @@
-# Cloud Resume Challenge - Backend 
+# Serverless Visitor Analytics & Counter API
+> A highly robust, privacy-compliant visitor counter and geolocation tracker backend for the Cloud Resume Challenge.
 
-This project contains source code and supporting files for the backend portion of Cloud Resume Challenge.  It is a serverless application that you can deploy with the SAM CLI. It includes the following files and folders.
+[![Deployment Pipeline](https://github.com/thomas-s-liu/cloud-resume-challenge-backend/actions/workflows/deploy.yml/badge.svg)](https://github.com/thomas-s-liu/cloud-resume-challenge-backend/actions)
+[![Language](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
+[![Framework](https://img.shields.io/badge/AWS%20SAM-Serverless-orange.svg)](https://aws.amazon.com/serverless/sam/)
+[![Code Style](https://img.shields.io/badge/code%20style-ruff-black.svg)](https://github.com/astral-sh/ruff)
+[![Security Scan](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
 
-- app.py - Code for the application's Lambda function.
-- tests - Unit and integration tests for the application code. 
-- template.yaml - A template that defines the application's AWS resources.
+This repository hosts the backend for the **Cloud Resume Challenge**—a serverless, cloud-native API designed to count and analyze traffic to the personal resume page. Built with **Python 3.13** and **AWS SAM (Serverless Application Model)**, it captures visitor metadata (browser, OS, anonymized IP, and geographic region) securely and efficiently, serving it via a custom domain.
 
-The application uses several AWS resources, including Lambda functions and an API Gateway. These resources are defined in the `template.yaml` file in this project. You can update the template to add AWS resources through the same deployment process that updates your application code.
+---
 
-If you prefer to use an integrated development environment (IDE) to build and test your application, you can use the AWS Toolkit. 
+## 🛠️ System Architecture
 
-The AWS Toolkit is an open source plug-in for popular IDEs that uses the SAM CLI to build and deploy serverless applications on AWS. The AWS Toolkit also adds a simplified step-through debugging experience for Lambda function code. See the following links to get started.
+The application is fully serverless, optimized for the AWS Free Tier, and secured against traffic surges through strict rate-limiting policies.
 
-* [CLion](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [GoLand](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [WebStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [Rider](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PhpStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PyCharm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [RubyMine](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [DataGrip](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [VS Code](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/welcome.html)
-* [Visual Studio](https://docs.aws.amazon.com/toolkit-for-visual-studio/latest/user-guide/welcome.html)
+```mermaid
+graph TD
+    User([🌐 Website Visitor]) -->|GET /visitor| APIGW[⚡ AWS API Gateway]
+    APIGW -->|Trigger Lambda| Lambda[🐍 Python Lambda Function]
+    
+    subgraph Execution Phase
+        Lambda -->|1. Resolve GeoIP| IPAPI[🌍 ip-api.com]
+        Lambda -->|2. Mask PII| IPAnonymize[🔒 IP Anonymizer]
+        Lambda -->|3. Atomic Increment| DDB_Counter[🧮 DynamoDB: COUNTER]
+        Lambda -->|4. Log Session| DDB_Log[📝 DynamoDB: visitDetails]
+    end
+    
+    DDB_Counter -.->|Update| DDB[(💾 DynamoDB Table: visitor-details)]
+    DDB_Log -.->|Insert| DDB
+    
+    APIGW -.->|Domain Routing| Route53[📡 resumeapi.thomasliu.click]
+```
 
-## Deploy the sample application
+### Request Flow
+1. **API Gateway Trigger**: When a client requests `https://resumeapi.thomasliu.click/visitor`, API Gateway rate-limits the query and routes it to the Lambda.
+2. **Metadata Capture & Geolocation**: The Python Lambda extracts the client's public IP from request headers and geolocates it using `ip-api.com`.
+3. **Data Anonymization**: The IP address is immediately anonymized (masked) to respect visitor privacy laws (e.g., GDPR, CCPA).
+4. **Atomic Transaction**: The function atomically increments the visitor counter and records a granular log record (UUID-indexed) containing browser, operating system, timestamp, and geographic details in DynamoDB.
 
-The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
+---
 
-To use the SAM CLI, you need the following tools.
+## ⚙️ Core Technical Implementation
 
-* SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-* [Python 3 installed](https://www.python.org/downloads/)
-* Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
+### 1. Atomic Distributed Counting
+To guarantee data integrity across simultaneous page loads, the system avoids "read-then-write" race conditions. Instead, it utilizes DynamoDB **Atomic Updates** (`ADD` expression):
 
-To build and deploy your application for the first time, run the following in your shell:
+```python
+response = ddbClient.update_item(
+    TableName=table_name,
+    Key={'visitId': {'S': 'COUNTER'}},
+    UpdateExpression='ADD visitCount :incr SET lastUpdated = :ts',
+    ExpressionAttributeValues={
+        ':incr': {'N': '1'},
+        ':ts': {'S': current_timestamp}
+    },
+    ReturnValues='ALL_OLD'
+)
+```
+* **Synchronization Safe**: If the global `COUNTER` record does not exist yet, the function catches the validation error, executes a concurrent-safe initial `put_item` with a conditional expression `attribute_not_exists(visitId)`, and restarts the counter loop gracefully.
+
+### 2. Privacy-Compliant Analytics (PII Protection)
+To build responsibly in the public cloud, the backend enforces privacy-by-design principles:
+* **IPv4 Anonymization**: All IPv4 addresses are masked to a `/16` subnet (e.g., `203.0.113.42` becomes `203.0.0.0`) before writing to persistent storage.
+* **IPv6 Anonymization**: IPv6 addresses are truncated to their leading three blocks (e.g., `2001:0db8:85a3:0000:0000:8a2e:0370:7334` becomes `2001:0db8:85a3::`).
+* **User-Agent Parsing**: Browser and OS classification are completed entirely in-memory using lightweight regex rules, preventing the exposure of detailed client footprints.
+
+---
+
+## 📂 Project Directory Structure
+
+```text
+├── .github/workflows/     # GitHub Actions CI/CD workflows
+│   └── deploy.yml         # Continuous Delivery pipeline (Manual & automated)
+├── docs/                  # Project documentation assets
+│   └── aws-sam-template-readme.md   # Archived AWS SAM boilerplate guide
+├── events/                # Mock event templates for local SAM invokes
+│   └── event.json         # API Gateway HTTP GET mock event
+├── requirements/          # Environment-specific package manifests
+│   ├── base.txt           # Production dependencies (boto3, requests, etc.)
+│   ├── dev.txt            # Static code analysis tools
+│   └── test.txt           # Testing engine (pytest, moto, responses)
+├── visitor/               # Core Lambda application codebase
+│   ├── __init__.py
+│   └── app.py             # Event Handler, Geolocation and DynamoDB clients
+├── tests/                 # Comprehensive test suites
+│   ├── unit/              # Mocked tests (moto, local execution)
+│   └── integration/       # Real-cloud testing (targets live AWS deployment)
+├── pyproject.toml         # Tooling configurations (Ruff, Pytest, Mypy, Bandit)
+├── template.yaml          # AWS SAM infrastructure definition template
+└── samconfig.toml         # Local AWS SAM execution properties
+```
+
+---
+
+## 🛠️ Infrastructure Configuration (`template.yaml`)
+
+The serverless stack is managed via Infrastructure-as-Code (IaC) in `template.yaml`.
+
+### 1. Resource Allocations
+* **Lambda Runtime**: Python 3.13 (`arm64` architecture for 30%+ better cost-to-performance efficiency over standard x86).
+* **Environment Variables**:
+  * `tableName`: Points dynamically to the DynamoDB Table resource (`visitor-details`).
+  * `startingVisitNumber`: Set to `'700'` to initialize or pad the counter at a professional milestone.
+
+### 2. API Gateway & Throttling
+To protect the backend against Denial-of-Service (DoS) vectors, the implicit production stage enforces strict API Gateway limits:
+* **Throttling Burst Limit**: 100 concurrent requests.
+* **Throttling Rate Limit**: 50 requests per second.
+
+### 3. DynamoDB Table Schema (`visitor-details`)
+* **Billing Mode**: `PAY_PER_REQUEST` (On-Demand billing, optimizing costs to absolute zero when the site has no traffic).
+* **Hash Key**: `visitId` (String UUID).
+* **Global Secondary Index (GSI)**: `TimestampIndex` (Partitioned by `timestamp` for high-throughput temporal queries).
+* **Security & Reliability**: 
+  * `SSEEnabled: true` (AWS-managed server-side encryption).
+  * `PointInTimeRecoveryEnabled: true` (Automated rolling backups).
+
+### 4. Custom Domain Routing
+Uses an `AWS::ApiGatewayV2::ApiMapping` resource to associate the implicit serverless API to:
+```text
+resumeapi.thomasliu.click
+```
+
+---
+
+## 💻 Local Development & Quality Assurance
+
+This codebase is configured with strict quality gates, verifying security, types, and styles prior to production deployments.
+
+### 1. Local Environment Setup
+Ensure Python 3.13 is installed locally. Set up a virtual environment and load dependencies:
 
 ```bash
+# Initialize and activate the virtual environment
+python -y -m venv .venv
+source .venv/bin/activate
+
+# Install development & test dependencies
+pip install -r requirements/dev.txt
+```
+
+### 2. Static Analysis & Linting Gates
+Before submitting code changes, run the following tools to satisfy linting and typing requirements:
+
+```bash
+# Code formatting and style checks (Ruff)
+ruff check .
+ruff format . --check
+
+# Strict type verification (Mypy)
+mypy visitor/
+
+# Static security scanning (Bandit)
+bandit -r visitor/ -c pyproject.toml
+
+# Dependency vulnerability scanning (Pip-audit)
+pip-audit
+```
+
+### 3. Executing the Test Suite
+The codebase is split into isolated Unit and Integration test patterns using `pytest`.
+
+#### A. Unit Tests (Fast & Mocked)
+Unit tests utilize `moto` to emulate DynamoDB in-memory and `responses` to intercept external HTTP geolocation requests. They run instantly without communicating with AWS:
+
+```bash
+# Run all unit tests with verbose output
+pytest -v tests/unit/
+```
+
+#### B. Integration Tests (Live Environment)
+Integration tests communicate with your live deployed AWS stack. They perform live HTTP requests to the target gateway and query the real DynamoDB tables to verify behavior in realistic conditions.
+
+> [!WARNING]
+> Running integration tests requires a deployed AWS stack. Ensure your environment has valid AWS credentials configured.
+
+```bash
+# Run integration tests against your live AWS stack
+pytest -v tests/integration/
+```
+> [!NOTE]
+> The integration tests automatically read output variables from the CloudFormation stack named `VisitorApi` (which maps to your deployed stack) to locate your API Gateway endpoint dynamically.
+
+---
+
+## 🚀 Build & Deployment
+
+### 1. Manual Deployment (SAM CLI)
+To deploy changes from your local workspace manually:
+
+```bash
+# 1. Build the SAM template inside a Docker container
 sam build --use-container
+
+# 2. Deploy to AWS CloudFormation (guided configuration on first run)
 sam deploy --guided
 ```
+Subsequent manual updates can be deployed directly by running `sam deploy` once `samconfig.toml` has captured your preferences.
 
-The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts:
+### 2. Automated CI/CD Pipeline (GitHub Actions)
+Deployments are fully automated via GitHub Actions (`.github/workflows/deploy.yml`). 
 
-* **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-* **AWS Region**: The AWS region you want to deploy your app to.
-* **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-* **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modifies IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-* **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
+The pipeline runs on **GitHub Action's Ubuntu Runners** and can be kicked off via `workflow_dispatch` (manual trigger).
 
-You can find your API Gateway Endpoint URL in the output values displayed after deployment.
+#### Pipeline Steps:
+1. **Checkout & Environment Init**: Pulls codebase and initializes Python 3.13 runtime with pip-cache configured.
+2. **SAM Configuration**: Installs and boots up the `aws-actions/setup-sam` environment.
+3. **AWS Authentication**: Securely authenticates using OpenID Connect (OIDC) or stored GitHub Secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+4. **SAM Build**: Packages the lambda code with dependencies.
+5. **SAM Deploy**: Deploys the infrastructure changes directly to the `visitor-api` CloudFormation stack under the default `us-east-1` region with IAM capabilities confirmed.
 
-## Use the SAM CLI to build and test locally
+---
 
-Build your application with the `sam build --use-container` command.
+## 🧹 Maintenance & Logging
 
-```bash
-cloud-resume-challenge-backend$ sam build --use-container
-```
-
-The SAM CLI installs dependencies defined in `requirements.txt`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
-
-Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
-
-Run functions locally and invoke them with the `sam local invoke` command.
+### Reading Logs in Production
+To tail live execution logs for the Lambda function in the AWS cloud directly from your command line:
 
 ```bash
-cloud-resume-challenge-backend$ sam local invoke VisitorLambdaFunction --event events/event.json
+sam logs -n VisitorLambdaFunction --stack-name visitor-api --tail
 ```
 
-The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
+### Cleanup
+If you need to tear down the AWS resources generated by this project, execute the CloudFormation deletion command:
 
 ```bash
-cloud-resume-challenge-backend$ sam local start-api
-cloud-resume-challenge-backend$ curl http://localhost:3000/visitor
+aws cloudformation delete-stack --stack-name visitor-api
 ```
-
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
-
-```yaml
-      Events:
-        CallVisitorApi:
-          Type: Api
-          Properties:
-            Path: /visitor
-            Method: get
-```
-
-## Add a resource to your application
-The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
-
-## Fetch, tail, and filter Lambda function logs
-
-To simplify troubleshooting, SAM CLI has a command called `sam logs`. `sam logs` lets you fetch logs generated by your deployed Lambda function from the command line. In addition to printing the logs on the terminal, this command has several nifty features to help you quickly find the bug.
-
-`NOTE`: This command works for all AWS Lambda functions; not just the ones you deploy using SAM.
-
-```bash
-cloud-resume-challenge-backend$ sam logs -n VisitorLambdaFunction --stack-name visitorApi --tail
-```
-
-You can find more information and examples about filtering Lambda function logs in the [SAM CLI Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-logging.html).
-
-## Tests
-
-Tests are defined in the `tests` folder in this project. Use PIP to install the test dependencies and run tests.  Make sure your environment var `PYTHONPATH` is set to the project root directory.
-
-```bash
-cloud-resume-challenge-backend$ export PYTHONPATH="$PWD"
-cloud-resume-challenge-backend$ pip install -r requirements.txt --user
-# unit test
-cloud-resume-challenge-backend$ pytest -v tests/unit/*
-# integration test, requiring deploying the stack first.
-# NOTE: I deviated from the original documentation by 
-#       hardcoding the stack name in the integration so change that there.
-cloud-resume-challenge-backend$ pytest -v tests/integration/*
-```
-
-## Cleanup
-
-To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
-
-```bash
-aws cloudformation delete-stack --stack-name cloud-resume-challenge-backend
-```
-
-## Resources
-
-See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
-
-Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond hello world samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
