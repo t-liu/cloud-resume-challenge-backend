@@ -1,13 +1,12 @@
-# Serverless Visitor Analytics & Counter API
-> A highly robust, privacy-compliant visitor counter and geolocation tracker backend for the Cloud Resume Challenge.
+# AWS Cloud Resume Challenge — Backend
+
+This repository hosts the backend for the [Cloud Resume Challenge](https://cloudresumechallenge.dev/)—a serverless, cloud-native API designed to count and analyze traffic to the personal resume page. Built with **Python 3.13** and **AWS SAM (Serverless Application Model)**, it captures visitor metadata (browser, OS, anonymized IP, and geographic region) securely and efficiently, serving it via a custom domain.
 
 [![Deployment Pipeline](https://github.com/thomas-s-liu/cloud-resume-challenge-backend/actions/workflows/deploy.yml/badge.svg)](https://github.com/thomas-s-liu/cloud-resume-challenge-backend/actions)
 [![Language](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
 [![Framework](https://img.shields.io/badge/AWS%20SAM-Serverless-orange.svg)](https://aws.amazon.com/serverless/sam/)
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-black.svg)](https://github.com/astral-sh/ruff)
 [![Security Scan](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
-
-This repository hosts the backend for the **Cloud Resume Challenge**—a serverless, cloud-native API designed to count and analyze traffic to the personal resume page. Built with **Python 3.13** and **AWS SAM (Serverless Application Model)**, it captures visitor metadata (browser, OS, anonymized IP, and geographic region) securely and efficiently, serving it via a custom domain.
 
 ---
 
@@ -30,7 +29,7 @@ graph TD
     DDB_Counter -.->|Update| DDB[(💾 DynamoDB Table: visitor-details)]
     DDB_Log -.->|Insert| DDB
     
-    APIGW -.->|Domain Routing| Route53[📡 resumeapi.thomasliu.click]
+    API Gateway -.->|Domain Routing| Route53[📡 resumeapi.thomasliu.click]
 ```
 
 ### Request Flow
