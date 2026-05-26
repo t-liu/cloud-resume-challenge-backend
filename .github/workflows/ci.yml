@@ -42,7 +42,7 @@ jobs:
         run: mypy .
 
       - name: Security scan
-        run: bandit -r src/
+        run: bandit -r visitor/
 
       - name: Dependency audit
         run: pip-audit
@@ -50,6 +50,6 @@ jobs:
       - name: Unit tests
         run: |
           pytest tests/unit \
-            --cov=src \
+            --cov=visitor \
             --cov-report=term \
             --cov-fail-under=85
