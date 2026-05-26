@@ -404,3 +404,120 @@ def test_lambda_handler_options_request(set_env_vars):
     assert "Access-Control-Allow-Methods" in response["headers"]
     assert "GET,OPTIONS" in response["headers"]["Access-Control-Allow-Methods"]
     assert response["body"] == ""
+
+def test_parse_user_agent_edge_linux_android_ios():
+    """Test user agent parsing for Edge, Linux, Android, iOS"""
+    from visitor.app import parse_user_agent
+    
+    # Edge
+    ua_edge = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59"
+    result = parse_user_agent(ua_edge)
+    assert result['browser'] == 'Edge'
+    
+    # Linux
+    ua_linux = "Mozilla/5.0 (X11; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0"
+    result = parse_user_agent(ua_linux)
+    assert result['os'] == 'Linux'
+    
+    # Android
+    ua_android = "Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Mobile Safari/537.36"
+    result = parse_user_agent(ua_android)
+    assert result['os'] == 'Linux'
+    
+    # iOS
+    ua_ios = "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1"
+    result = parse_user_agent(ua_ios)
+    assert result['os'] == 'macOS'
+
+def test_anonymize_ip_exception():
+    """Test IP anonymization handles exceptions gracefully"""
+    from visitor.app import anonymize_ip
+    # Passing an integer raises AttributeError, which should be caught
+    assert anonymize_ip(123) == 123
+
+@mock_aws
+def test_get_next_visit_number_validation_exception():
+    """Test get_next_visit_number handles validation exception by initializing the counter"""
+    import visitor.app
+    from botocore.exceptions import ClientError
+    
+    # Mock update_item to raise ClientError with ValidationException
+    error_response = {'Error': {'Code': 'ValidationException', 'Message': 'Validation error'}}
+    with patch.object(visitor.app.ddbClient, 'update_item', side_effect=ClientError(error_response, 'UpdateItem')):
+        # Mock put_item to succeed
+        with patch.object(visitor.app.ddbClient, 'put_item', return_value={}):
+            val, prev = visitor.app.get_next_visit_number('visitor_test', 10)
+            assert val == 10
+            assert prev is None
+
+@mock_aws
+def test_get_next_visit_number_conditional_check_failed():
+    """Test get_next_visit_number handles conditional check failed exception on counter initialization"""
+    import visitor.app
+    from botocore.exceptions import ClientError
+    
+    # Mock update_item to raise ValidationException
+    error_validation = {'Error': {'Code': 'ValidationException', 'Message': 'Validation error'}}
+    # Mock first put_item to raise ConditionalCheckFailedException
+    error_conditional = {'Error': {'Code': 'ConditionalCheckFailedException', 'Message': 'Condition failed'}}
+    
+    # A generator to raise conditional check failed then succeed on update_item next time
+    call_count = 0
+    def mock_update_item(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise ClientError(error_validation, 'UpdateItem')
+        # On retry, return a valid update response
+        return {
+            'Attributes': {
+                'visitCount': {'N': '42'},
+                'lastUpdated': {'S': '2026-05-25T00:00:00Z'}
+            }
+        }
+        
+    def mock_put_item(*args, **kwargs):
+        raise ClientError(error_conditional, 'PutItem')
+        
+    with patch.object(visitor.app.ddbClient, 'update_item', side_effect=mock_update_item):
+        with patch.object(visitor.app.ddbClient, 'put_item', side_effect=mock_put_item):
+            val, prev = visitor.app.get_next_visit_number('visitor_test', 10)
+            assert val == 43
+            assert prev == '2026-05-25T00:00:00Z'
+
+@mock_aws
+def test_get_next_visit_number_other_client_error():
+    """Test get_next_visit_number fallback behavior on other DynamoDB client errors"""
+    import visitor.app
+    from botocore.exceptions import ClientError
+    
+    # Mock update_item to raise ResourceNotFoundException
+    error_response = {'Error': {'Code': 'ResourceNotFoundException', 'Message': 'Table not found'}}
+    with patch.object(visitor.app.ddbClient, 'update_item', side_effect=ClientError(error_response, 'UpdateItem')):
+        val, prev = visitor.app.get_next_visit_number('visitor_test', 10)
+        assert val >= 10
+        assert prev is None
+
+@mock_aws
+def test_lambda_handler_client_error(apigw_event, set_env_vars):
+    """Test lambda handler returns 500 error when DynamoDB client error occurs"""
+    import visitor.app
+    from botocore.exceptions import ClientError
+    
+    error_response = {'Error': {'Code': 'DynamoDBError', 'Message': 'DynamoDB went down'}}
+    with patch('visitor.app.get_next_visit_number', side_effect=ClientError(error_response, 'UpdateItem')):
+        response = visitor.app.lambda_handler(apigw_event, "")
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert "error" in body
+
+@mock_aws
+def test_lambda_handler_general_exception(apigw_event, set_env_vars):
+    """Test lambda handler returns 500 error when unexpected general exception occurs"""
+    import visitor.app
+    
+    with patch('visitor.app.get_next_visit_number', side_effect=Exception("Unexpected boom")):
+        response = visitor.app.lambda_handler(apigw_event, "")
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert "error" in body
